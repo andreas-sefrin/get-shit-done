@@ -123,3 +123,132 @@ describe('planning-config.md documents subagent_timeout (#1472)', () => {
     );
   });
 });
+
+// ─── init execute-phase includes context_window ─────────────────────────────
+
+describe('init execute-phase context_window (#1472)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('init execute-phase output includes context_window from config', () => {
+    // Write config with a custom context_window value (1M for Opus/Sonnet 4.6)
+    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      context_window: 1000000,
+    }, null, 2));
+
+    // Create a phase directory with a plan so init execute-phase succeeds
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-setup');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '01-01-PLAN.md'), '# Plan');
+
+    const result = runGsdTools('init execute-phase 1', tmpDir, { HOME: tmpDir });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.context_window, 1000000, 'context_window should reflect configured value');
+  });
+
+  test('init execute-phase uses default context_window when not configured', () => {
+    // Write minimal config without context_window
+    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({}, null, 2));
+
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-setup');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '01-01-PLAN.md'), '# Plan');
+
+    const result = runGsdTools('init execute-phase 1', tmpDir, { HOME: tmpDir });
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.context_window, 200000, 'default context_window should be 200000');
+  });
+});
+
+// ─── config-get context_window ──────────────────────────────────────────────
+
+describe('config-get context_window (#1472)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('config-get context_window returns the configured value', () => {
+    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      context_window: 1000000,
+    }, null, 2));
+
+    const result = runGsdTools('config-get context_window', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output, 1000000);
+  });
+
+  test('config-get context_window errors when key is absent', () => {
+    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({}, null, 2));
+
+    const result = runGsdTools('config-get context_window', tmpDir);
+    assert.strictEqual(result.success, false);
+    assert.ok(
+      result.error.includes('Key not found'),
+      `Expected "Key not found" in error: ${result.error}`
+    );
+  });
+});
+
+// ─── config-set workflow.subagent_timeout numeric coercion ──────────────────
+
+describe('config-set workflow.subagent_timeout numeric values (#1472)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify({}, null, 2));
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('config-set workflow.subagent_timeout coerces string to number', () => {
+    const result = runGsdTools(['config-set', 'workflow.subagent_timeout', '900000'], tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.updated, true);
+    assert.strictEqual(output.key, 'workflow.subagent_timeout');
+    assert.strictEqual(output.value, 900000);
+
+    const configPath = path.join(tmpDir, '.planning', 'config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    assert.strictEqual(config.workflow.subagent_timeout, 900000);
+    assert.strictEqual(typeof config.workflow.subagent_timeout, 'number');
+  });
+
+  test('config-set workflow.subagent_timeout round-trips through config-get', () => {
+    runGsdTools(['config-set', 'workflow.subagent_timeout', '1200000'], tmpDir);
+
+    const result = runGsdTools('config-get workflow.subagent_timeout', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output, 1200000);
+  });
+});
