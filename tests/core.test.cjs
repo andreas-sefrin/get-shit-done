@@ -1040,14 +1040,13 @@ describe('normalizeMd', () => {
 describe('stale hook filter', () => {
   test('filter should only match gsd-prefixed .js files', () => {
     const files = [
-      'gsd-check-update.js',
       'gsd-context-monitor.js',
       'gsd-prompt-guard.js',
       'gsd-statusline.js',
       'gsd-workflow-guard.js',
       'guard-edits-outside-project.js',  // user hook
       'my-custom-hook.js',               // user hook
-      'gsd-check-update.js.bak',         // backup file
+      'gsd-context-monitor.js.bak',      // backup file
       'README.md',                       // non-js file
     ];
 
@@ -1055,7 +1054,6 @@ describe('stale hook filter', () => {
     const filtered = files.filter(gsdFilter);
 
     assert.deepStrictEqual(filtered, [
-      'gsd-check-update.js',
       'gsd-context-monitor.js',
       'gsd-prompt-guard.js',
       'gsd-statusline.js',
@@ -1067,37 +1065,9 @@ describe('stale hook filter', () => {
   });
 });
 
-// ─── stale hook path regression (#1249) ──────────────────────────────────────
-
-describe('stale hook path', () => {
-  test('gsd-check-update.js checks configDir/hooks/ where hooks are actually installed (#1421)', () => {
-    const content = fs.readFileSync(
-      path.join(__dirname, '..', 'hooks', 'gsd-check-update.js'), 'utf-8'
-    );
-    // Hooks are installed at configDir/hooks/ (e.g. ~/.claude/hooks/),
-    // not configDir/get-shit-done/hooks/ which doesn't exist (#1421)
-    assert.ok(
-      content.includes("path.join(configDir, 'hooks')"),
-      'stale hook check must look in configDir/hooks/ where hooks are actually installed'
-    );
-  });
-});
-
 // ─── shared cache directory regression (#1421) ─────────────────────────────────
 
 describe('shared cache directory (#1421)', () => {
-  test('gsd-check-update.js writes cache to shared ~/.cache/gsd/ directory', () => {
-    const content = fs.readFileSync(
-      path.join(__dirname, '..', 'hooks', 'gsd-check-update.js'), 'utf-8'
-    );
-    // Cache must use a tool-agnostic path so statusline can find it
-    // regardless of which runtime (Claude, Gemini, OpenCode) ran the check
-    assert.ok(
-      content.includes("path.join(homeDir, '.cache', 'gsd')"),
-      'check-update must write cache to ~/.cache/gsd/ (shared, tool-agnostic)'
-    );
-  });
-
   test('gsd-statusline.js checks shared cache first, falls back to legacy (#1421)', () => {
     const content = fs.readFileSync(
       path.join(__dirname, '..', 'hooks', 'gsd-statusline.js'), 'utf-8'

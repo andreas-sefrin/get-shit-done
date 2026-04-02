@@ -437,7 +437,7 @@ for dir in .claude .config/opencode .opencode .gemini .config/kilo .kilo .codex;
 done
 ```
 
-The SessionStart hook (`gsd-check-update.js`) writes to the detected runtime's cache directory, so preferred/env-derived paths and default paths must all be cleared to prevent stale update indicators.
+All cache paths must be cleared to prevent stale update indicators.
 </step>
 
 <step name="display_result">

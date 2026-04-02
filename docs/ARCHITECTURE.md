@@ -208,7 +208,6 @@ Runtime hooks that integrate with the host AI agent:
 |------|-------|---------|
 | `gsd-statusline.js` | `statusLine` | Displays model, task, directory, and context usage bar |
 | `gsd-context-monitor.js` | `PostToolUse` / `AfterTool` | Injects agent-facing context warnings at 35%/25% remaining |
-| `gsd-check-update.js` | `SessionStart` | Background check for new GSD versions |
 | `gsd-prompt-guard.js` | `PreToolUse` | Scans `.planning/` writes for prompt injection patterns (advisory) |
 | `gsd-workflow-guard.js` | `PreToolUse` | Detects file edits outside GSD workflow context (advisory, opt-in via `hooks.workflow_guard`) |
 | `gsd-read-guard.js` | `PreToolUse` | Advisory guard preventing Edit/Write on files not yet read in the session |
@@ -419,8 +418,7 @@ UI-SPEC.md (per phase) ───────────────────
 ├── agents/*.md                     # 24 agent definitions
 ├── hooks/
 │   ├── gsd-statusline.js           # Statusline hook
-│   ├── gsd-context-monitor.js      # Context warning hook
-│   └── gsd-check-update.js         # Update check hook
+│   └── gsd-context-monitor.js      # Context warning hook
 ├── settings.json                   # Hook registrations
 └── VERSION                         # Installed version number
 ```
@@ -534,9 +532,6 @@ Runtime Engine (Claude Code / Gemini CLI)
     │   Reads: stdin (tool event JSON), /tmp/claude-ctx-{session}.json (bridge)
     │   Writes: stdout (hookSpecificOutput with additionalContext warning)
     │
-    └── SessionStart event ──► gsd-check-update.js
-        Reads: VERSION file
-        Writes: ~/.claude/cache/gsd-update-check.json (spawns background process)
 ```
 
 ### Context Monitor Thresholds

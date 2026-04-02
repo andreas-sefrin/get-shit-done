@@ -168,7 +168,6 @@ GSDは、ユーザーとAIコーディングエージェント（Claude Code、G
 |------|-------|---------|
 | `gsd-statusline.js` | `statusLine` | モデル、タスク、ディレクトリ、コンテキスト使用量バーを表示 |
 | `gsd-context-monitor.js` | `PostToolUse` / `AfterTool` | コンテキスト残量35%/25%でエージェント向け警告を注入 |
-| `gsd-check-update.js` | `SessionStart` | GSDの新バージョンをバックグラウンドで確認 |
 | `gsd-prompt-guard.js` | `PreToolUse` | `.planning/` への書き込みにプロンプトインジェクションパターンがないかスキャン（アドバイザリー） |
 | `gsd-workflow-guard.js` | `PreToolUse` | GSDワークフローコンテキスト外でのファイル編集を検出（アドバイザリー、`hooks.workflow_guard` によるオプトイン） |
 
@@ -354,8 +353,7 @@ UI-SPEC.md (per phase) ───────────────────
 ├── agents/*.md                     # 15 agent definitions
 ├── hooks/
 │   ├── gsd-statusline.js           # Statusline hook
-│   ├── gsd-context-monitor.js      # Context warning hook
-│   └── gsd-check-update.js         # Update check hook
+│   └── gsd-context-monitor.js      # Context warning hook
 ├── settings.json                   # Hook registrations
 └── VERSION                         # Installed version number
 ```
@@ -466,9 +464,6 @@ Runtime Engine (Claude Code / Gemini CLI)
     │   Reads: stdin (tool event JSON), /tmp/claude-ctx-{session}.json (bridge)
     │   Writes: stdout (hookSpecificOutput with additionalContext warning)
     │
-    └── SessionStart event ──► gsd-check-update.js
-        Reads: VERSION file
-        Writes: ~/.claude/cache/gsd-update-check.json (spawns background process)
 ```
 
 ### コンテキストモニターの閾値
