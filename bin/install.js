@@ -48,7 +48,7 @@ const claudeToCopilotTools = {
   WebSearch: 'web',
   WebFetch: 'web',
   TodoWrite: 'todo',
-  AskUserQuestion: 'ask_user',
+  AskUserQuestion: 'vscode_askquestions',
   SlashCommand: 'skill',
 };
 
@@ -3867,6 +3867,66 @@ function copyCommandsAsCodebuddySkills(srcDir, skillsDir, prefix, pathPrefix, ru
 }
 
 /**
+ * Generate the GSD hooks configuration object for Copilot CLI.
+ * Returns an object matching the Copilot hooks.json schema (version 1).
+ * Hook scripts live at hooksDir (e.g. .github/hooks/ or ~/.copilot/hooks/).
+ * @param {string} hooksDir - Absolute path where hook scripts are installed
+ * @returns {object} Hook config object ready for JSON.stringify
+ */
+function generateCopilotHooksConfig(hooksDir) {
+  const hooksPath = hooksDir.replace(/\\/g, '/');
+  const makeCmd = (file, timeoutSec) => ({
+    type: 'command',
+    bash: `node "${hooksPath}/${file}"`,
+    timeoutSec,
+  });
+  return {
+    version: 1,
+    hooks: {
+      preToolUse: [
+        makeCmd('gsd-workflow-guard.js', 5),
+        makeCmd('gsd-prompt-guard.js', 5),
+      ],
+    },
+  };
+}
+
+/**
+ * Install GSD hooks for Copilot CLI.
+ * Copies gsd-workflow-guard.js, gsd-prompt-guard.js to
+ * targetDir/hooks/ and writes gsd-hooks.json for Copilot to load.
+ * @param {string} targetDir - Copilot config dir (.github/ or ~/.copilot/)
+ * @param {boolean} isGlobal - Whether this is a global install
+ * @param {string} src - Package root directory
+ * @param {object} pkg - Package manifest (for version stamping)
+ */
+function installCopilotHooks(targetDir, isGlobal, src, pkg) {
+  const hooksDir = path.join(targetDir, 'hooks');
+  fs.mkdirSync(hooksDir, { recursive: true });
+
+  const hooksSrc = path.join(src, 'hooks', 'dist');
+  const copilotHooks = ['gsd-workflow-guard.js', 'gsd-prompt-guard.js'];
+  const configDirReplacement = getConfigDirFromHome('copilot', isGlobal);
+
+  for (const hookFile of copilotHooks) {
+    const srcFile = path.join(hooksSrc, hookFile);
+    if (!fs.existsSync(srcFile)) continue;
+    let content = fs.readFileSync(srcFile, 'utf8');
+    content = content.replace(/'\.claude'/g, configDirReplacement);
+    content = content.replace(/\{\{GSD_VERSION\}\}/g, pkg.version);
+    const destFile = path.join(hooksDir, hookFile);
+    fs.writeFileSync(destFile, content);
+    try { fs.chmodSync(destFile, 0o755); } catch (e) { /* Windows doesn't support chmod */ }
+  }
+
+  const hooksConfig = generateCopilotHooksConfig(hooksDir);
+  fs.writeFileSync(
+    path.join(hooksDir, 'gsd-hooks.json'),
+    JSON.stringify(hooksConfig, null, 2) + '\n'
+  );
+}
+
+/**
  * Copy Claude commands as Copilot skills — one folder per skill with SKILL.md.
  * Applies CONV-01 (structure), CONV-02 (allowed-tools), CONV-06 (paths), CONV-07 (command names).
  */
@@ -4537,6 +4597,31 @@ function uninstall(isGlobal, runtime = 'claude') {
         removedCount++;
         console.log(`  ${green}✓${reset} Cleaned GSD section from copilot-instructions.md`);
       }
+    }
+
+    // Copilot: remove GSD hook scripts and gsd-hooks.json
+    const copilotHooksDir = path.join(targetDir, 'hooks');
+    if (fs.existsSync(copilotHooksDir)) {
+      let hookCount = 0;
+      for (const f of ['gsd-workflow-guard.js', 'gsd-prompt-guard.js', 'gsd-hooks.json']) {
+        const p = path.join(copilotHooksDir, f);
+        if (fs.existsSync(p)) { fs.unlinkSync(p); hookCount++; }
+      }
+      if (hookCount > 0) {
+        removedCount++;
+        console.log(`  ${green}✓${reset} Removed ${hookCount} Copilot hook file(s)`);
+      }
+    }
+
+    // Copilot: remove package.json if it was GSD-written (CommonJS marker)
+    const copilotPkgJson = path.join(targetDir, 'package.json');
+    if (fs.existsSync(copilotPkgJson)) {
+      try {
+        if (fs.readFileSync(copilotPkgJson, 'utf8').trim() === '{"type":"commonjs"}') {
+          fs.unlinkSync(copilotPkgJson);
+          removedCount++;
+        }
+      } catch (e) { /* ignore read errors */ }
     }
   } else if (isAntigravity) {
     // Antigravity: remove skills/gsd-*/ directories (same layout as Copilot skills)
@@ -5255,12 +5340,12 @@ function writeManifest(configDir, runtime = 'claude') {
   }
 
   // Track hook files so saveLocalPatches() can detect user modifications
-  // Hooks are only installed for runtimes that use settings.json (not Codex/Copilot/Cline)
-  if (!isCodex && !isCopilot && !isCline) {
+  // Track runtimes that install hook files locally. Cline has no hooks dir here.
+  if (!isCodex && !isCline) {
     const hooksDir = path.join(configDir, 'hooks');
     if (fs.existsSync(hooksDir)) {
       for (const file of fs.readdirSync(hooksDir)) {
-        if (file.startsWith('gsd-') && (file.endsWith('.js') || file.endsWith('.sh'))) {
+        if (file.startsWith('gsd-') && (file.endsWith('.js') || file.endsWith('.sh') || file.endsWith('.json'))) {
           manifest.files['hooks/' + file] = fileHash(path.join(hooksDir, file));
         }
       }
@@ -5738,14 +5823,18 @@ function install(isGlobal, runtime = 'claude') {
     failures.push('VERSION');
   }
 
-  if (!isCodex && !isCopilot && !isCursor && !isWindsurf && !isTrae && !isCline) {
-    // Write package.json to force CommonJS mode for GSD scripts
-    // Prevents "require is not defined" errors when project has "type": "module"
-    // Node.js walks up looking for package.json - this stops inheritance from project
+  // Write package.json to force CommonJS mode for GSD scripts that use require()
+  // Prevents "require is not defined" errors when project has "type": "module"
+  // Node.js walks up looking for package.json - this stops inheritance from project
+  // Copilot hook scripts also use require(), so Copilot is included here
+  if (!isCodex && !isCursor && !isWindsurf && !isTrae && !isCline) {
     const pkgJsonDest = path.join(targetDir, 'package.json');
     fs.writeFileSync(pkgJsonDest, '{"type":"commonjs"}\n');
     console.log(`  ${green}✓${reset} Wrote package.json (CommonJS mode)`);
+  }
 
+  // Copy full hooks suite from dist/ — Copilot uses installCopilotHooks() instead
+  if (!isCodex && !isCopilot && !isCursor && !isWindsurf) {
     // Copy hooks from dist/ (bundled with dependencies)
     // Template paths for the target runtime (replaces '.claude' with correct config dir)
     const hooksSrc = path.join(src, 'hooks', 'dist');
@@ -5942,7 +6031,21 @@ function install(isGlobal, runtime = 'claude') {
       mergeCopilotInstructions(instructionsPath, template);
       console.log(`  ${green}✓${reset} Generated copilot-instructions.md`);
     }
-    // Copilot: no settings.json, no hooks, no statusline (like Codex)
+    // Install Copilot hooks: sessionStart (update check) + preToolUse (guards)
+    // Note: statusLine and PostToolUse have no Copilot CLI equivalent — skipped
+    try {
+      installCopilotHooks(targetDir, isGlobal, src, pkg);
+      console.log(`  ${green}✓${reset} Installed Copilot hooks`);
+      if (isGlobal) {
+        console.log(`  ${yellow}ℹ${reset}  Note: Copilot CLI only documents .github/hooks/ for hook loading. ` +
+          `Global hooks (~/.copilot/hooks/) are installed but may not be picked up automatically — ` +
+          `consider a local install if hooks don't activate.`);
+      }
+    } catch (e) {
+      console.warn(`  ${yellow}⚠${reset}  Could not install Copilot hooks: ${e.message}`);
+      failures.push('hooks');
+    }
+
     return { settingsPath: null, settings: null, statuslineCommand: null, runtime, configDir: targetDir };
   }
 
@@ -6602,6 +6705,8 @@ if (process.env.GSD_TEST_MODE) {
     convertClaudeCommandToCopilotSkill,
     convertClaudeAgentToCopilotAgent,
     copyCommandsAsCopilotSkills,
+    generateCopilotHooksConfig,
+    installCopilotHooks,
     GSD_COPILOT_INSTRUCTIONS_MARKER,
     GSD_COPILOT_INSTRUCTIONS_CLOSE_MARKER,
     mergeCopilotInstructions,

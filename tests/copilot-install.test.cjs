@@ -25,6 +25,8 @@ const {
   convertClaudeCommandToCopilotSkill,
   convertClaudeAgentToCopilotAgent,
   copyCommandsAsCopilotSkills,
+  generateCopilotHooksConfig,
+  installCopilotHooks,
   GSD_COPILOT_INSTRUCTIONS_MARKER,
   GSD_COPILOT_INSTRUCTIONS_CLOSE_MARKER,
   mergeCopilotInstructions,
@@ -158,8 +160,10 @@ describe('Source code integration (Copilot)', () => {
     assert.ok(src.includes("const isCopilot = runtime === 'copilot'"), 'isCopilot defined');
   });
 
-  test('hooks are skipped for Copilot', () => {
-    assert.ok(src.includes('!isCodex && !isCopilot'), 'hooks skip check includes copilot');
+  test('generic hook install still skipped for Copilot (dedicated installer used)', () => {
+    // The full hooks/dist copy is skipped for Copilot — it uses installCopilotHooks() instead
+    assert.ok(src.includes('!isCodex && !isCopilot'), 'generic hooks copy still skips Copilot');
+    assert.ok(src.includes('installCopilotHooks'), 'Copilot has dedicated hook installer');
   });
 
   test('--both flag unchanged (still claude + opencode only)', () => {
@@ -215,8 +219,8 @@ describe('convertCopilotToolName', () => {
     assert.strictEqual(convertCopilotToolName('TodoWrite'), 'todo');
   });
 
-  test('maps AskUserQuestion to ask_user', () => {
-    assert.strictEqual(convertCopilotToolName('AskUserQuestion'), 'ask_user');
+  test('maps AskUserQuestion to vscode_askquestions', () => {
+    assert.strictEqual(convertCopilotToolName('AskUserQuestion'), 'vscode_askquestions');
   });
 
   test('maps SlashCommand to skill', () => {
@@ -1366,6 +1370,159 @@ describe('E2E: Copilot uninstall verification', () => {
       assert.ok(fs.existsSync(customAgentPath),
         'Non-GSD agent file should be preserved after uninstall');
     });
+  });
+});
+
+// ─── generateCopilotHooksConfig ──────────────────────────────────────────────
+
+describe('generateCopilotHooksConfig', () => {
+  test('returns version 1', () => {
+    const config = generateCopilotHooksConfig('/test/hooks');
+    assert.strictEqual(config.version, 1);
+  });
+
+  test('preToolUse has exactly 2 entries: gsd-workflow-guard and gsd-prompt-guard', () => {
+    const config = generateCopilotHooksConfig('/test/hooks');
+    assert.ok(Array.isArray(config.hooks.preToolUse));
+    assert.strictEqual(config.hooks.preToolUse.length, 2);
+    const cmds = config.hooks.preToolUse.map(h => h.bash);
+    assert.ok(cmds.some(c => c.includes('gsd-workflow-guard.js')));
+    assert.ok(cmds.some(c => c.includes('gsd-prompt-guard.js')));
+  });
+
+  test('does not include gsd-statusline or gsd-context-monitor (no Copilot equivalent)', () => {
+    const config = generateCopilotHooksConfig('/test/hooks');
+    const allBash = [
+      ...(config.hooks.preToolUse || []),
+      ...(config.hooks.userPromptSubmitted || []),
+    ].map(h => h.bash || '');
+    assert.ok(!allBash.some(b => b.includes('gsd-statusline')), 'no statusline hook');
+    assert.ok(!allBash.some(b => b.includes('gsd-context-monitor')), 'no context-monitor hook');
+  });
+
+  test('all hook type fields are "command"', () => {
+    const config = generateCopilotHooksConfig('/test/hooks');
+    const allHooks = [
+      ...(config.hooks.preToolUse || []),
+    ];
+    assert.ok(allHooks.every(h => h.type === 'command'), 'all hooks have type: command');
+  });
+
+  test('all bash values use node with quoted path', () => {
+    const config = generateCopilotHooksConfig('/my/hooks/dir');
+    const allHooks = [
+      ...(config.hooks.preToolUse || []),
+    ];
+    assert.ok(allHooks.every(h => h.bash.startsWith('node "')), 'all bash values start with node "');
+  });
+
+  test('bash paths contain the provided hooksDir', () => {
+    const config = generateCopilotHooksConfig('/custom/path/hooks');
+    const allHooks = [...config.hooks.preToolUse];
+    assert.ok(allHooks.every(h => h.bash.includes('/custom/path/hooks')));
+  });
+});
+
+// ─── Copilot hook source adaptation ──────────────────────────────────────────
+
+describe('Copilot hook source adaptation', () => {
+  const hooksDir = path.join(__dirname, '..', 'hooks');
+
+  test('gsd-workflow-guard.js handles Copilot toolName (flat field)', () => {
+    const content = fs.readFileSync(path.join(hooksDir, 'gsd-workflow-guard.js'), 'utf8');
+    assert.ok(content.includes('data.toolName'), 'handles Copilot toolName field');
+  });
+
+  test("gsd-workflow-guard.js checks for Copilot 'edit' tool name", () => {
+    const content = fs.readFileSync(path.join(hooksDir, 'gsd-workflow-guard.js'), 'utf8');
+    assert.ok(content.includes("'edit'"), "checks for Copilot 'edit' tool name");
+  });
+
+  test('gsd-workflow-guard.js handles Copilot toolArgs JSON string', () => {
+    const content = fs.readFileSync(path.join(hooksDir, 'gsd-workflow-guard.js'), 'utf8');
+    assert.ok(content.includes('data.toolArgs'), 'handles Copilot toolArgs field');
+  });
+
+  test('gsd-prompt-guard.js handles Copilot toolName (flat field)', () => {
+    const content = fs.readFileSync(path.join(hooksDir, 'gsd-prompt-guard.js'), 'utf8');
+    assert.ok(content.includes('data.toolName'), 'handles Copilot toolName field');
+  });
+
+  test("gsd-prompt-guard.js checks for Copilot 'edit' tool name", () => {
+    const content = fs.readFileSync(path.join(hooksDir, 'gsd-prompt-guard.js'), 'utf8');
+    assert.ok(content.includes("'edit'"), "checks for Copilot 'edit' tool name");
+  });
+
+  test('gsd-prompt-guard.js handles Copilot toolArgs JSON string', () => {
+    const content = fs.readFileSync(path.join(hooksDir, 'gsd-prompt-guard.js'), 'utf8');
+    assert.ok(content.includes('data.toolArgs'), 'handles Copilot toolArgs field');
+  });
+
+  test('gsd-prompt-guard.js checks newPath for Copilot edit tool file path', () => {
+    const content = fs.readFileSync(path.join(hooksDir, 'gsd-prompt-guard.js'), 'utf8');
+    assert.ok(content.includes('toolInput?.newPath'), 'checks newPath for Copilot edit tool');
+  });
+});
+
+// ─── installCopilotHooks integration ─────────────────────────────────────────
+
+describe('installCopilotHooks', () => {
+  let td;
+  const fakeSrc = path.join(__dirname, '..');
+
+  beforeEach(() => {
+    td = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-copilot-hooks-test-'));
+    // Create a fake hooks/dist directory with stub hook scripts
+    const hooksDist = path.join(td, 'hooks', 'dist');
+    fs.mkdirSync(hooksDist, { recursive: true });
+    for (const f of ['gsd-workflow-guard.js', 'gsd-prompt-guard.js']) {
+      fs.writeFileSync(path.join(hooksDist, f), `// gsd-hook-version: {{GSD_VERSION}}\nrequire('fs');\n`);
+    }
+  });
+
+  afterEach(() => {
+    fs.rmSync(td, { recursive: true, force: true });
+  });
+
+  test('creates hooks directory', () => {
+    const targetDir = path.join(td, 'target');
+    fs.mkdirSync(targetDir);
+    installCopilotHooks(targetDir, false, td, { version: '1.0.0' });
+    assert.ok(fs.existsSync(path.join(targetDir, 'hooks')));
+  });
+
+  test('copies the 2 required hook scripts', () => {
+    const targetDir = path.join(td, 'target');
+    fs.mkdirSync(targetDir);
+    installCopilotHooks(targetDir, false, td, { version: '1.0.0' });
+    const hooksDir = path.join(targetDir, 'hooks');
+    assert.ok(fs.existsSync(path.join(hooksDir, 'gsd-workflow-guard.js')));
+    assert.ok(fs.existsSync(path.join(hooksDir, 'gsd-prompt-guard.js')));
+  });
+
+  test('writes gsd-hooks.json', () => {
+    const targetDir = path.join(td, 'target');
+    fs.mkdirSync(targetDir);
+    installCopilotHooks(targetDir, false, td, { version: '1.0.0' });
+    assert.ok(fs.existsSync(path.join(targetDir, 'hooks', 'gsd-hooks.json')));
+  });
+
+  test('gsd-hooks.json is valid JSON with version 1', () => {
+    const targetDir = path.join(td, 'target');
+    fs.mkdirSync(targetDir);
+    installCopilotHooks(targetDir, false, td, { version: '1.0.0' });
+    const configPath = path.join(targetDir, 'hooks', 'gsd-hooks.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    assert.strictEqual(config.version, 1);
+  });
+
+  test('stamps version into hook files replacing {{GSD_VERSION}}', () => {
+    const targetDir = path.join(td, 'target');
+    fs.mkdirSync(targetDir);
+    installCopilotHooks(targetDir, false, td, { version: '9.9.9' });
+    const content = fs.readFileSync(path.join(targetDir, 'hooks', 'gsd-workflow-guard.js'), 'utf8');
+    assert.ok(content.includes('9.9.9'), 'version stamped into hook file');
+    assert.ok(!content.includes('{{GSD_VERSION}}'), '{{GSD_VERSION}} placeholder replaced');
   });
 });
 

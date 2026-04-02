@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "node \"/Users/andreas/source/gsd/get-shit-done/.github/hooks/gsd-workflow-guard.js\"",
+        "timeoutSec": 5
+      },
+      {
+        "type": "command",
+        "bash": "node \"/Users/andreas/source/gsd/get-shit-done/.github/hooks/gsd-prompt-guard.js\"",
+        "timeoutSec": 5
+      }
+    ]
+  }
+}
