@@ -44,7 +44,9 @@ Display detailed phase breakdown and state information.
 
 ### switch
 Run: `node "$GSD_TOOLS" workstream set <name> --raw --cwd "$CWD"`
-Also set `GSD_WORKSTREAM` env var for the current session.
+Also set `GSD_WORKSTREAM` for the current session when the runtime supports it.
+If the runtime exposes a session identifier, GSD also stores the active workstream
+session-locally so concurrent sessions do not overwrite each other.
 
 ### progress
 Run: `node "$GSD_TOOLS" workstream progress --raw --cwd "$CWD"`

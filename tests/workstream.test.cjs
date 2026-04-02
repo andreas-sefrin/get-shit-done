@@ -65,6 +65,80 @@ describe('planningDir workstream awareness via env var', () => {
   });
 });
 
+describe('session-scoped active workstream routing', () => {
+  let tmpDir;
+
+  before(() => {
+    tmpDir = createTempProject();
+
+    for (const [ws, status] of [['alpha', 'Alpha active'], ['beta', 'Beta active']]) {
+      const wsDir = path.join(tmpDir, '.planning', 'workstreams', ws);
+      fs.mkdirSync(path.join(wsDir, 'phases'), { recursive: true });
+      fs.writeFileSync(path.join(wsDir, 'STATE.md'), `# State\n**Status:** ${status}\n`);
+    }
+  });
+
+  after(() => cleanup(tmpDir));
+
+  test('stores active workstream per session instead of mutating shared pointer', () => {
+    const alphaSet = runGsdTools(['workstream', 'set', 'alpha', '--raw'], tmpDir, { GSD_SESSION_KEY: 'session-alpha' });
+    const betaSet = runGsdTools(['workstream', 'set', 'beta', '--raw'], tmpDir, { GSD_SESSION_KEY: 'session-beta' });
+
+    assert.ok(alphaSet.success, `alpha set failed: ${alphaSet.error}`);
+    assert.ok(betaSet.success, `beta set failed: ${betaSet.error}`);
+    assert.ok(!fs.existsSync(path.join(tmpDir, '.planning', 'active-workstream')),
+      'shared active-workstream file should not be used when session keys are available');
+  });
+
+  test('different sessions resolve different active workstreams without --ws', () => {
+    const alpha = runGsdTools(['workstream', 'get', '--raw'], tmpDir, { GSD_SESSION_KEY: 'session-alpha' });
+    const beta = runGsdTools(['workstream', 'get', '--raw'], tmpDir, { GSD_SESSION_KEY: 'session-beta' });
+
+    assert.ok(alpha.success, `alpha get failed: ${alpha.error}`);
+    assert.ok(beta.success, `beta get failed: ${beta.error}`);
+    assert.strictEqual(alpha.output, 'alpha');
+    assert.strictEqual(beta.output, 'beta');
+  });
+
+  test('session-scoped pointer ignores legacy shared active-workstream file', () => {
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'active-workstream'), 'beta\n');
+
+    const alpha = runGsdTools(['workstream', 'get', '--raw'], tmpDir, { GSD_SESSION_KEY: 'session-alpha' });
+    const shared = runGsdTools(['workstream', 'get', '--raw'], tmpDir);
+
+    assert.ok(alpha.success, `session-scoped get failed: ${alpha.error}`);
+    assert.ok(shared.success, `legacy get failed: ${shared.error}`);
+    assert.strictEqual(alpha.output, 'alpha');
+    assert.strictEqual(shared.output, 'beta');
+  });
+
+  test('state commands route to the session-scoped workstream automatically', () => {
+    const alpha = runGsdTools(['state', 'json', '--raw'], tmpDir, { GSD_SESSION_KEY: 'session-alpha' });
+    const beta = runGsdTools(['state', 'json', '--raw'], tmpDir, { GSD_SESSION_KEY: 'session-beta' });
+
+    assert.ok(alpha.success, `alpha state failed: ${alpha.error}`);
+    assert.ok(beta.success, `beta state failed: ${beta.error}`);
+    const alphaState = JSON.parse(alpha.output);
+    const betaState = JSON.parse(beta.output);
+    assert.strictEqual(alphaState.status, 'Alpha active');
+    assert.strictEqual(betaState.status, 'Beta active');
+  });
+
+  test('clearing one session does not clear another session pointer', () => {
+    const clearAlpha = runGsdTools(['workstream', 'set', '--clear', '--raw'], tmpDir, { GSD_SESSION_KEY: 'session-alpha' });
+    const alpha = runGsdTools(['workstream', 'get'], tmpDir, { GSD_SESSION_KEY: 'session-alpha' });
+    const beta = runGsdTools(['workstream', 'get', '--raw'], tmpDir, { GSD_SESSION_KEY: 'session-beta' });
+
+    assert.ok(clearAlpha.success, `clear alpha failed: ${clearAlpha.error}`);
+    assert.ok(alpha.success, `alpha get after clear failed: ${alpha.error}`);
+    assert.ok(beta.success, `beta get after alpha clear failed: ${beta.error}`);
+
+    const cleared = JSON.parse(alpha.output);
+    assert.strictEqual(cleared.active, null);
+    assert.strictEqual(beta.output, 'beta');
+  });
+});
+
 // ─── Workstream CRUD ────────────────────────────────────────────────────────
 
 describe('workstream create', () => {
