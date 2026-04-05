@@ -142,7 +142,7 @@ Parse JSON for: `planner_model`, `executor_model`, `checker_model`, `verifier_mo
 USE_WORKTREES=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.use_worktrees 2>/dev/null || echo "true")
 ```
 
-**If `roadmap_exists` is false:** Error — Quick mode requires an active project with ROADMAP.md. Run `/gsd:new-project` first.
+**If `roadmap_exists` is false:** Error — Quick mode requires an active project with ROADMAP.md. Run `/gsd-new-project` first.
 
 Quick tasks can run mid-phase - validation only checks ROADMAP.md exists, not phase status.
 
@@ -550,12 +550,26 @@ Offer: 1) Force proceed, 2) Abort
 
 **Step 6: Spawn executor**
 
+Capture current HEAD before spawning (used for worktree branch check):
+```bash
+EXPECTED_BASE=$(git rev-parse HEAD)
+```
+
 Spawn gsd-executor with plan reference:
 
 ```
 Task(
   prompt="
 Execute quick task ${quick_id}.
+
+${USE_WORKTREES !== "false" ? `
+<worktree_branch_check>
+FIRST ACTION before any other work: verify this worktree branch is based on the correct commit.
+Run: git merge-base HEAD ${EXPECTED_BASE}
+If the result differs from ${EXPECTED_BASE}, run: git reset --soft ${EXPECTED_BASE}
+This corrects a known issue on Windows where EnterWorktree creates branches from main instead of the feature branch HEAD.
+</worktree_branch_check>
+` : ''}
 
 <files_to_read>
 - ${QUICK_DIR}/${quick_id}-PLAN.md (Plan)
@@ -751,7 +765,7 @@ Commit: ${commit_hash}
 
 ---
 
-Ready for next task: /gsd:quick ${GSD_WS}
+Ready for next task: /gsd-quick ${GSD_WS}
 ```
 
 **If NOT `$VALIDATE_MODE`:**
@@ -768,7 +782,7 @@ Commit: ${commit_hash}
 
 ---
 
-Ready for next task: /gsd:quick ${GSD_WS}
+Ready for next task: /gsd-quick ${GSD_WS}
 ```
 
 </process>

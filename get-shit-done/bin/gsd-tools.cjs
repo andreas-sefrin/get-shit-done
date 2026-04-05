@@ -235,7 +235,7 @@ async function main() {
   }
 
   // Optional workstream override for parallel milestone work.
-  // Priority: --ws flag > GSD_WORKSTREAM env var > active-workstream file > null (flat mode)
+  // Priority: --ws flag > GSD_WORKSTREAM env var > session-scoped pointer > shared legacy pointer > null
   const wsEqArg = args.find(arg => arg.startsWith('--ws='));
   const wsIdx = args.indexOf('--ws');
   let ws = null;
@@ -399,6 +399,14 @@ async function runCommand(command, args, cwd, raw) {
         state.cmdSignalWaiting(cwd, type, question, options, p, raw);
       } else if (subcommand === 'signal-resume') {
         state.cmdSignalResume(cwd, raw);
+      } else if (subcommand === 'planned-phase') {
+        const { phase: p, name, plans } = parseNamedArgs(args, ['phase', 'name', 'plans']);
+        state.cmdStatePlannedPhase(cwd, p, plans !== null ? parseInt(plans, 10) : null, raw);
+      } else if (subcommand === 'validate') {
+        state.cmdStateValidate(cwd, raw);
+      } else if (subcommand === 'sync') {
+        const { verify } = parseNamedArgs(args, [], ['verify']);
+        state.cmdStateSync(cwd, { verify }, raw);
       } else {
         state.cmdStateLoad(cwd, raw);
       }
@@ -427,6 +435,11 @@ async function runCommand(command, args, cwd, raw) {
       const message = messageArgs.join(' ') || undefined;
       const files = filesIndex !== -1 ? args.slice(filesIndex + 1).filter(a => !a.startsWith('--')) : [];
       commands.cmdCommit(cwd, message, files, raw, amend, noVerify);
+      break;
+    }
+
+    case 'check-commit': {
+      commands.cmdCheckCommit(cwd, raw);
       break;
     }
 
@@ -578,8 +591,10 @@ async function runCommand(command, args, cwd, raw) {
           includeArchived: args.includes('--include-archived'),
         };
         phase.cmdPhasesList(cwd, options, raw);
+      } else if (subcommand === 'clear') {
+        milestone.cmdPhasesClear(cwd, raw);
       } else {
-        error('Unknown phases subcommand. Available: list');
+        error('Unknown phases subcommand. Available: list, clear');
       }
       break;
     }
@@ -720,12 +735,16 @@ async function runCommand(command, args, cwd, raw) {
     case 'init': {
       const workflow = args[1];
       switch (workflow) {
-        case 'execute-phase':
-          init.cmdInitExecutePhase(cwd, args[2], raw);
+        case 'execute-phase': {
+          const { validate: epValidate } = parseNamedArgs(args, [], ['validate']);
+          init.cmdInitExecutePhase(cwd, args[2], raw, { validate: epValidate });
           break;
-        case 'plan-phase':
-          init.cmdInitPlanPhase(cwd, args[2], raw);
+        }
+        case 'plan-phase': {
+          const { validate: ppValidate } = parseNamedArgs(args, [], ['validate']);
+          init.cmdInitPlanPhase(cwd, args[2], raw, { validate: ppValidate });
           break;
+        }
         case 'new-project':
           init.cmdInitNewProject(cwd, raw);
           break;

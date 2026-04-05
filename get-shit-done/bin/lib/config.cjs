@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, error, planningRoot } = require('./core.cjs');
+const { output, error, planningRoot, CONFIG_DEFAULTS } = require('./core.cjs');
 const {
   VALID_PROFILES,
   getAgentToModelMapForProfile,
@@ -23,10 +23,13 @@ const VALID_CONFIG_KEYS = new Set([
   'workflow.skip_discuss',
   'workflow._auto_chain_active',
   'workflow.use_worktrees',
-  'git.branching_strategy', 'git.phase_branch_template', 'git.milestone_branch_template', 'git.quick_branch_template',
+  'git.branching_strategy', 'git.base_branch', 'git.phase_branch_template', 'git.milestone_branch_template', 'git.quick_branch_template',
   'planning.commit_docs', 'planning.search_gitignored',
+  'workflow.subagent_timeout',
   'hooks.context_warnings',
   'project_code', 'phase_naming',
+  'manager.flags.discuss', 'manager.flags.plan', 'manager.flags.execute',
+  'response_language',
 ]);
 
 /**
@@ -62,7 +65,7 @@ function validateKnownConfigKeyPath(keyPath) {
  * Merges (increasing priority):
  *   1. Hardcoded defaults — every key that loadConfig() resolves, plus mode/granularity
  *   2. User-level defaults from ~/.gsd/defaults.json (if present)
- *   3. userChoices — the settings the user explicitly selected during /gsd:new-project
+ *   3. userChoices — the settings the user explicitly selected during /gsd-new-project
  *
  * Uses the canonical `git` namespace for branching keys (consistent with VALID_CONFIG_KEYS
  * and the settings workflow). loadConfig() handles both flat and nested formats, so this
@@ -103,18 +106,18 @@ function buildNewProjectConfig(userChoices) {
   }
 
   const hardcoded = {
-    model_profile: 'balanced',
-    commit_docs: true,
-    parallelization: true,
-    search_gitignored: false,
+    model_profile: CONFIG_DEFAULTS.model_profile,
+    commit_docs: CONFIG_DEFAULTS.commit_docs,
+    parallelization: CONFIG_DEFAULTS.parallelization,
+    search_gitignored: CONFIG_DEFAULTS.search_gitignored,
     brave_search: hasBraveSearch,
     firecrawl: hasFirecrawl,
     exa_search: hasExaSearch,
     git: {
-      branching_strategy: 'none',
-      phase_branch_template: 'gsd/phase-{phase}-{slug}',
-      milestone_branch_template: 'gsd/{milestone}-{slug}',
-      quick_branch_template: null,
+      branching_strategy: CONFIG_DEFAULTS.branching_strategy,
+      phase_branch_template: CONFIG_DEFAULTS.phase_branch_template,
+      milestone_branch_template: CONFIG_DEFAULTS.milestone_branch_template,
+      quick_branch_template: CONFIG_DEFAULTS.quick_branch_template,
     },
     workflow: {
       research: true,
@@ -171,7 +174,7 @@ function buildNewProjectConfig(userChoices) {
  * Command: create a fully-materialized .planning/config.json for a new project.
  *
  * Accepts user-chosen settings as a JSON string (the keys the user explicitly
- * configured during /gsd:new-project). All remaining keys are filled from
+ * configured during /gsd-new-project). All remaining keys are filled from
  * hardcoded defaults and optional ~/.gsd/defaults.json.
  *
  * Idempotent: if config.json already exists, returns { created: false }.
@@ -438,6 +441,7 @@ function getCmdConfigSetModelProfileResultMessage(
 }
 
 module.exports = {
+  VALID_CONFIG_KEYS,
   cmdConfigEnsureSection,
   cmdConfigSet,
   cmdConfigGet,

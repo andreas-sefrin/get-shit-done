@@ -6,7 +6,7 @@
  */
 
 const { test, describe, beforeEach, afterEach } = require('node:test');
-const assert = require('node:assert');
+const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -30,6 +30,7 @@ const {
   findPhaseInternal,
   findProjectRoot,
   detectSubRepos,
+  planningDir,
 } = require('../get-shit-done/bin/lib/core.cjs');
 
 // ─── loadConfig ────────────────────────────────────────────────────────────────
@@ -98,6 +99,18 @@ describe('loadConfig', () => {
     assert.strictEqual(config.model_overrides, null);
   });
 
+  test('reads response_language when set', () => {
+    writeConfig({ response_language: 'Portuguese' });
+    const config = loadConfig(tmpDir);
+    assert.strictEqual(config.response_language, 'Portuguese');
+  });
+
+  test('returns response_language as null when not set', () => {
+    writeConfig({ model_profile: 'balanced' });
+    const config = loadConfig(tmpDir);
+    assert.strictEqual(config.response_language, null);
+  });
+
   test('returns defaults when config.json contains invalid JSON', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
@@ -124,6 +137,55 @@ describe('loadConfig', () => {
     writeConfig({ commit_docs: false, planning: { commit_docs: true } });
     const config = loadConfig(tmpDir);
     assert.strictEqual(config.commit_docs, false);
+  });
+
+  test('warns on unknown config keys to stderr (#1535)', (t) => {
+    writeConfig({ model_profile: 'quality', active_project: 'my-project', custom_flag: true });
+    const origWrite = process.stderr.write;
+    let stderrOutput = '';
+    process.stderr.write = (chunk) => { stderrOutput += chunk; };
+    t.after(() => { process.stderr.write = origWrite; });
+    const config = loadConfig(tmpDir);
+    // Known key still loads correctly
+    assert.strictEqual(config.model_profile, 'quality');
+    // Warning emitted for unknown keys
+    assert.ok(stderrOutput.includes('active_project'), 'should warn about active_project');
+    assert.ok(stderrOutput.includes('custom_flag'), 'should warn about custom_flag');
+    assert.ok(stderrOutput.includes('ignored'), 'should mention keys will be ignored');
+  });
+
+  test('known config keys are derived from VALID_CONFIG_KEYS (not hardcoded)', () => {
+    // Verify that loadConfig's unknown-key check uses config-set's VALID_CONFIG_KEYS
+    // as its source of truth. If a new key is added to config-set, it should
+    // automatically be recognized by loadConfig without a separate update.
+    const { VALID_CONFIG_KEYS } = require('../get-shit-done/bin/lib/config.cjs');
+    // Every top-level key from VALID_CONFIG_KEYS should be recognized
+    const topLevelKeys = [...VALID_CONFIG_KEYS].map(k => k.split('.')[0]);
+    for (const key of topLevelKeys) {
+      writeConfig({ [key]: 'test-value' });
+      const origWrite = process.stderr.write;
+      let stderrOutput = '';
+      process.stderr.write = (chunk) => { stderrOutput += chunk; };
+      try {
+        loadConfig(tmpDir);
+        assert.ok(
+          !stderrOutput.includes(key),
+          `VALID_CONFIG_KEYS key "${key}" should not trigger unknown-key warning`
+        );
+      } finally {
+        process.stderr.write = origWrite;
+      }
+    }
+  });
+
+  test('does not warn when all config keys are known', (t) => {
+    writeConfig({ model_profile: 'balanced', workflow: { research: false }, git: { branching_strategy: 'per-phase' } });
+    const origWrite = process.stderr.write;
+    let stderrOutput = '';
+    process.stderr.write = (chunk) => { stderrOutput += chunk; };
+    t.after(() => { process.stderr.write = origWrite; });
+    loadConfig(tmpDir);
+    assert.strictEqual(stderrOutput, '', 'should not emit any warnings for valid config');
   });
 });
 
@@ -1609,5 +1671,80 @@ describe('reapStaleTempFiles', () => {
     assert.doesNotThrow(() => {
       reapStaleTempFiles('gsd-nonexistent-prefix-xyz-', { maxAgeMs: 0 });
     });
+  });
+});
+
+// ─── planningDir ──────────────────────────────────────────────────────────────
+
+describe('planningDir', () => {
+  const cwd = '/fake/repo';
+  let savedProject, savedWorkstream;
+
+  beforeEach(() => {
+    savedProject = process.env.GSD_PROJECT;
+    savedWorkstream = process.env.GSD_WORKSTREAM;
+    delete process.env.GSD_PROJECT;
+    delete process.env.GSD_WORKSTREAM;
+  });
+
+  afterEach(() => {
+    if (savedProject !== undefined) process.env.GSD_PROJECT = savedProject;
+    else delete process.env.GSD_PROJECT;
+    if (savedWorkstream !== undefined) process.env.GSD_WORKSTREAM = savedWorkstream;
+    else delete process.env.GSD_WORKSTREAM;
+  });
+
+  test('returns .planning/ when neither project nor workstream is set', () => {
+    const result = planningDir(cwd, null, null);
+    assert.strictEqual(result, path.join(cwd, '.planning'));
+  });
+
+  test('returns .planning/{project}/ when project is set', () => {
+    const result = planningDir(cwd, null, 'my-app');
+    assert.strictEqual(result, path.join(cwd, '.planning', 'my-app'));
+  });
+
+  test('returns .planning/workstreams/{ws}/ when workstream is set', () => {
+    const result = planningDir(cwd, 'feature-x', null);
+    assert.strictEqual(result, path.join(cwd, '.planning', 'workstreams', 'feature-x'));
+  });
+
+  test('returns .planning/{project}/workstreams/{ws}/ when both are set', () => {
+    const result = planningDir(cwd, 'feature-x', 'my-app');
+    assert.strictEqual(result, path.join(cwd, '.planning', 'my-app', 'workstreams', 'feature-x'));
+  });
+
+  test('reads GSD_PROJECT from env when project param is undefined', () => {
+    process.env.GSD_PROJECT = 'env-project';
+    const result = planningDir(cwd);
+    assert.strictEqual(result, path.join(cwd, '.planning', 'env-project'));
+  });
+
+  test('rejects path traversal in project name', () => {
+    assert.throws(
+      () => planningDir(cwd, null, '../../etc'),
+      /invalid path characters/
+    );
+  });
+
+  test('rejects forward slash in project name', () => {
+    assert.throws(
+      () => planningDir(cwd, null, 'foo/bar'),
+      /invalid path characters/
+    );
+  });
+
+  test('rejects backslash in project name', () => {
+    assert.throws(
+      () => planningDir(cwd, null, 'foo\\bar'),
+      /invalid path characters/
+    );
+  });
+
+  test('rejects path traversal in workstream name', () => {
+    assert.throws(
+      () => planningDir(cwd, '../../../tmp', null),
+      /invalid path characters/
+    );
   });
 });
