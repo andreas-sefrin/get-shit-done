@@ -47,6 +47,20 @@ npx get-shit-done-cc@latest
 
 ---
 
+> [!IMPORTANT]
+> ### Welcome Back to GSD
+>
+> If you're returning to GSD after the recent Anthropic Terms of Service changes — welcome back. We kept building while you were gone.
+>
+> **To re-import an existing project into GSD:**
+> 1. Run `/gsd-map-codebase` to scan and index your current codebase state
+> 2. Run `/gsd-new-project` to initialize a fresh GSD planning structure using the codebase map as context
+> 3. Review [docs/USER-GUIDE.md](docs/USER-GUIDE.md) and the [CHANGELOG](CHANGELOG.md) for updates — a lot has changed since you were last here
+>
+> Your code is fine. GSD just needs its planning context rebuilt. The two commands above handle that.
+
+---
+
 ## Why I Built This
 
 I'm a solo developer. I don't write code — Claude Code does.
@@ -75,15 +89,13 @@ People who want to describe what they want and have it built correctly — witho
 
 Built-in quality gates catch real problems: schema drift detection flags ORM changes missing migrations, security enforcement anchors verification to threat models, and scope reduction detection prevents the planner from silently dropping your requirements.
 
-### v1.32.0 Highlights
+### v1.34.0 Highlights
 
-- **STATE.md consistency gates** — `state validate` detects drift between STATE.md and filesystem; `state sync` reconstructs from actual project state
-- **`--to N` flag** — Stop autonomous execution after a specific phase
-- **Research gate** — Blocks planning when RESEARCH.md has unresolved open questions
-- **Verifier milestone scope filtering** — Gaps addressed in later phases marked as deferred, not gaps
-- **Read-before-edit guard** — Advisory hook prevents infinite retry loops in non-Claude runtimes
-- **Context reduction** — Markdown truncation and cache-friendly prompt ordering for lower token usage
-- **4 new runtimes** — Trae, Kilo, Augment, and Cline (12 runtimes total)
+- **Gates taxonomy** — 4 canonical gate types (pre-flight, revision, escalation, abort) wired into plan-checker and verifier agents
+- **Shell hooks fix** — `hooks/*.sh` files are now correctly included in the npm package, eliminating startup hook errors on fresh installs
+- **Post-merge hunk verification** — `reapply-patches` detects silently dropped hunks after three-way merge
+- **detectConfigDir fix** — Claude Code users no longer see false "update available" warnings when multiple runtimes are installed
+- **3 bug fixes** — Milestone backlog preservation, detectConfigDir priority, and npm package manifest
 
 ---
 
@@ -125,21 +137,21 @@ npx get-shit-done-cc@latest
 npx get-shit-done-cc --claude --global   # Install to ~/.claude/
 npx get-shit-done-cc --claude --local    # Install to ./.claude/
 
-# OpenCode (open source, free models)
+# OpenCode
 npx get-shit-done-cc --opencode --global # Install to ~/.config/opencode/
 
 # Gemini CLI
 npx get-shit-done-cc --gemini --global   # Install to ~/.gemini/
 
-# Kilo (OpenCode fork)
+# Kilo
 npx get-shit-done-cc --kilo --global     # Install to ~/.config/kilo/
 npx get-shit-done-cc --kilo --local      # Install to ./.kilo/
 
-# Codex (skills-first)
+# Codex
 npx get-shit-done-cc --codex --global    # Install to ~/.codex/
 npx get-shit-done-cc --codex --local     # Install to ./.codex/
 
-# Copilot (GitHub Copilot CLI)
+# Copilot
 npx get-shit-done-cc --copilot --global  # Install to ~/.github/
 npx get-shit-done-cc --copilot --local   # Install to ./.github/
 
@@ -147,11 +159,11 @@ npx get-shit-done-cc --copilot --local   # Install to ./.github/
 npx get-shit-done-cc --cursor --global      # Install to ~/.cursor/
 npx get-shit-done-cc --cursor --local       # Install to ./.cursor/
 
-# Windsurf (Codeium, VS Code-based)
-npx get-shit-done-cc --windsurf --global    # Install to ~/.windsurf/
+# Windsurf
+npx get-shit-done-cc --windsurf --global    # Install to ~/.codeium/windsurf/
 npx get-shit-done-cc --windsurf --local     # Install to ./.windsurf/
 
-# Antigravity (Google, skills-first, Gemini-based)
+# Antigravity
 npx get-shit-done-cc --antigravity --global # Install to ~/.gemini/antigravity/
 npx get-shit-done-cc --antigravity --local  # Install to ./.agent/
 
@@ -159,11 +171,11 @@ npx get-shit-done-cc --antigravity --local  # Install to ./.agent/
 npx get-shit-done-cc --augment --global     # Install to ~/.augment/
 npx get-shit-done-cc --augment --local      # Install to ./.augment/
 
-# Trae (ByteDance, skills-first)
+# Trae
 npx get-shit-done-cc --trae --global        # Install to ~/.trae/
 npx get-shit-done-cc --trae --local         # Install to ./.trae/
 
-# Cline (uses .clinerules)
+# Cline
 npx get-shit-done-cc --cline --global       # Install to ~/.cline/
 npx get-shit-done-cc --cline --local        # Install to ./.clinerules
 
