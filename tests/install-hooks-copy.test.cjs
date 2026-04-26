@@ -31,7 +31,6 @@ const EXPECTED_SH_HOOKS = [
 
 // All hooks that should be in hooks/dist/ after build
 const EXPECTED_ALL_HOOKS = [
-  'gsd-check-update.js',
   'gsd-context-monitor.js',
   'gsd-prompt-guard.js',
   'gsd-read-guard.js',
@@ -156,13 +155,12 @@ describe('install.js source correctness', () => {
     );
   });
 
-  test('Codex hook uses correct filename gsd-check-update.js (not gsd-update-check.js)', () => {
-    // The cache file gsd-update-check.json is legitimate (different artifact);
-    // check that no hook registration uses the inverted .js filename.
-    // Match the exact pattern: quote + gsd-update-check.js + quote
+  test('installer source no longer registers or emits the update-check hook', () => {
     assert.ok(
-      !src.match(/['"]gsd-update-check\.js['"]/),
-      'install.js must not reference the inverted hook name gsd-update-check.js in quotes'
+      !src.includes("buildHookCommand(targetDir, 'gsd-check-update.js'") &&
+      !src.includes("'/hooks/gsd-check-update.js'") &&
+      !src.includes('Configured update check hook'),
+      'install.js should not register or emit gsd-check-update.js after the hook is removed'
     );
   });
 

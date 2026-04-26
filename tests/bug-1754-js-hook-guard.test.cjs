@@ -22,7 +22,6 @@ const path = require('path');
 const INSTALL_SRC = path.join(__dirname, '..', 'bin', 'install.js');
 
 const JS_HOOKS = [
-  { name: 'gsd-check-update.js',      registrationAnchor: 'hasGsdUpdateHook' },
   { name: 'gsd-context-monitor.js',   registrationAnchor: 'hasContextMonitorHook' },
   { name: 'gsd-prompt-guard.js',      registrationAnchor: 'hasPromptGuardHook' },
   { name: 'gsd-read-guard.js',        registrationAnchor: 'hasReadGuardHook' },
@@ -75,29 +74,4 @@ describe('bug #1754: .js hook registration guards', () => {
     });
   }
 
-  test('all .js hooks use the same guard pattern as .sh hooks', () => {
-    // Count existsSync calls in the hook registration section.
-    // There should be guards for all JS hooks plus the existing SH hooks.
-    // This test ensures new hooks added in the future follow the same pattern.
-    const registrationSection = src.slice(
-      src.indexOf('// Configure SessionStart hook'),
-      src.indexOf('return { settingsPath, settings, statuslineCommand')
-    );
-
-    // Count unique hook file existence checks (pattern: path.join(targetDir, 'hooks', 'gsd-*.js'))
-    const jsGuards = (registrationSection.match(/gsd-[\w-]+\.js.*not found at target/g) || []);
-    const shGuards = (registrationSection.match(/gsd-[\w-]+\.sh.*not found at target/g) || []);
-
-    assert.ok(
-      jsGuards.length >= JS_HOOKS.length,
-      `Expected at least ${JS_HOOKS.length} .js hook guards, found ${jsGuards.length}. ` +
-      `Every .js hook registration must check file existence before registering.`
-    );
-
-    assert.ok(
-      shGuards.length >= 3,
-      `Expected at least 3 .sh hook guards (validate-commit, session-state, phase-boundary), ` +
-      `found ${shGuards.length}.`
-    );
-  });
 });

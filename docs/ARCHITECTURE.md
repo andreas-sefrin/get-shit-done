@@ -243,8 +243,6 @@ Runtime hooks that integrate with the host AI agent:
 |------|-------|---------|
 | `gsd-statusline.js` | `statusLine` | Displays model, task, directory, and context usage bar |
 | `gsd-context-monitor.js` | `PostToolUse` / `AfterTool` | Injects agent-facing context warnings at 35%/25% remaining |
-| `gsd-check-update.js` | `SessionStart` | Foreground trigger for the background update check |
-| `gsd-check-update-worker.js` | (helper) | Background worker spawned by `gsd-check-update.js`; no direct event registration |
 | `gsd-prompt-guard.js` | `PreToolUse` | Scans `.planning/` writes for prompt injection patterns (advisory) |
 | `gsd-read-injection-scanner.js` | `PostToolUse` | Scans Read tool output for injected instructions in untrusted content |
 | `gsd-workflow-guard.js` | `PreToolUse` | Detects file edits outside GSD workflow context (advisory, opt-in via `hooks.workflow_guard`) |
@@ -253,7 +251,7 @@ Runtime hooks that integrate with the host AI agent:
 | `gsd-validate-commit.sh` | `PostToolUse` | Commit validation for conventional commit enforcement |
 | `gsd-phase-boundary.sh` | `PostToolUse` | Phase boundary detection for workflow transitions |
 
-See [`docs/INVENTORY.md`](INVENTORY.md#hooks-11-shipped) for the authoritative 11-hook roster.
+See [`docs/INVENTORY.md`](INVENTORY.md#hooks-9-shipped) for the authoritative 9-hook roster.
 
 ### CLI Tools (`get-shit-done/bin/`)
 

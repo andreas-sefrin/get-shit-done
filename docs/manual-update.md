@@ -19,11 +19,9 @@ node scripts/build-hooks.js
 # 3. Run the installer directly
 node bin/install.js --claude --global
 
-# 4. Clear the update cache so the statusline indicator resets
-rm -f ~/.cache/gsd/gsd-update-check.json
 ```
 
-**Step 5 — Restart your runtime** to pick up the new commands and agents.
+**Step 4 — Restart your runtime** to pick up the new commands and agents.
 
 ## Runtime flags
 

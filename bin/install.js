@@ -6232,8 +6232,8 @@ function install(isGlobal, runtime = 'claude') {
             // Ensure hook files are executable (fixes #1162 — missing +x permission)
             try { fs.chmodSync(destFile, 0o755); } catch (e) { /* Windows doesn't support chmod */ }
           } else {
-            // .sh hooks carry a gsd-hook-version header so gsd-check-update.js can
-            // detect staleness after updates — stamp the version just like .js hooks.
+            // Stamp shell hook version headers the same way as JS hooks so the
+            // installed hook metadata stays in sync with the packaged version.
             if (entry.endsWith('.sh')) {
               let content = fs.readFileSync(srcFile, 'utf8');
               content = content.replace(/\{\{GSD_VERSION\}\}/g, pkg.version);
@@ -6260,8 +6260,7 @@ function install(isGlobal, runtime = 'claude') {
     }
   }
 
-  // Clear stale update cache so next session re-evaluates hook versions
-  // Cache lives at ~/.cache/gsd/ (see hooks/gsd-check-update.js line 35-36)
+  // Clear legacy update-check cache files left by older installs.
   const updateCacheFile = path.join(os.homedir(), '.cache', 'gsd', 'gsd-update-check.json');
   try { fs.unlinkSync(updateCacheFile); } catch (e) { /* cache may not exist yet */ }
 
@@ -6333,8 +6332,8 @@ function install(isGlobal, runtime = 'claude') {
     console.log(`  ${green}✓${reset} Generated ${agentCount} agent .toml config files`);
 
     // Copy hook files that are referenced in config.toml (#2153)
-    // The main hook-copy block is gated to non-Codex runtimes, but Codex registers
-    // gsd-check-update.js in config.toml — the file must physically exist.
+    // The main hook-copy block is gated to non-Codex runtimes, but Codex still
+    // needs the remaining shipped hooks copied into its runtime config directory.
     const codexHooksSrc = path.join(src, 'hooks', 'dist');
     if (fs.existsSync(codexHooksSrc)) {
       const codexHooksDest = path.join(targetDir, 'hooks');
@@ -6366,25 +6365,13 @@ function install(isGlobal, runtime = 'claude') {
       console.log(`  ${green}✓${reset} Installed hooks`);
     }
 
-    // Add Codex hooks (SessionStart for update checking) — requires codex_hooks feature flag
     const configPath = path.join(targetDir, 'config.toml');
     try {
       let configContent = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf-8') : '';
-      const eol = detectLineEnding(configContent);
       const codexHooksFeature = ensureCodexHooksFeature(configContent);
       configContent = setManagedCodexHooksOwnership(codexHooksFeature.content, codexHooksFeature.ownership);
 
-      // Add SessionStart hook for update checking
-      const updateCheckScript = path.resolve(targetDir, 'hooks', 'gsd-check-update.js').replace(/\\/g, '/');
-      const hookBlock =
-        `${eol}# GSD Hooks${eol}` +
-        `[[hooks]]${eol}` +
-        `event = "SessionStart"${eol}` +
-        `command = "node ${updateCheckScript}"${eol}`;
-
-      // Migrate legacy gsd-update-check entries from prior installs (#1755 followup)
-      // Remove stale hook blocks that used the inverted filename or wrong path.
-      // Single \r?\n-aware regex handles LF, CRLF, and block-at-file-start (#2698).
+      // Remove legacy update-check hook blocks from prior installs (#1755 followup, #2698).
       if (configContent.includes('gsd-update-check')) {
         configContent = configContent.replace(
           /(?:\r?\n|^)# GSD Hooks\r?\n\[\[hooks\]\]\r?\nevent = "SessionStart"\r?\ncommand = "node [^\r\n]*gsd-update-check\.js"\r?\n/gm,
@@ -6392,12 +6379,7 @@ function install(isGlobal, runtime = 'claude') {
         );
       }
 
-      if (hasEnabledCodexHooksFeature(configContent) && !configContent.includes('gsd-check-update')) {
-        configContent += hookBlock;
-      }
-
       fs.writeFileSync(configPath, configContent, 'utf-8');
-      console.log(`  ${green}✓${reset} Configured Codex hooks (SessionStart)`);
     } catch (e) {
       console.warn(`  ${yellow}⚠${reset}  Could not configure Codex hooks: ${e.message}`);
     }
@@ -6488,9 +6470,6 @@ function install(isGlobal, runtime = 'claude') {
   const statuslineCommand = isGlobal
     ? buildHookCommand(targetDir, 'gsd-statusline.js', hookOpts)
     : 'node ' + localPrefix + '/hooks/gsd-statusline.js';
-  const updateCheckCommand = isGlobal
-    ? buildHookCommand(targetDir, 'gsd-check-update.js', hookOpts)
-    : 'node ' + localPrefix + '/hooks/gsd-check-update.js';
   const contextMonitorCommand = isGlobal
     ? buildHookCommand(targetDir, 'gsd-context-monitor.js', hookOpts)
     : 'node ' + localPrefix + '/hooks/gsd-context-monitor.js';
@@ -6515,36 +6494,12 @@ function install(isGlobal, runtime = 'claude') {
     }
   }
 
-  // Configure SessionStart hook for update checking (skip for opencode)
   if (!isOpencode && !isKilo) {
     if (!settings.hooks) {
       settings.hooks = {};
     }
     if (!settings.hooks.SessionStart) {
       settings.hooks.SessionStart = [];
-    }
-
-    const hasGsdUpdateHook = settings.hooks.SessionStart.some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-check-update'))
-    );
-
-    // Guard: only register if the hook file was actually installed (#1754).
-    // When hooks/dist/ is missing from the npm package (as in v1.32.0), the
-    // copy step produces no files but the registration step ran unconditionally,
-    // causing "hook error" on every tool invocation.
-    const checkUpdateFile = path.join(targetDir, 'hooks', 'gsd-check-update.js');
-    if (!hasGsdUpdateHook && fs.existsSync(checkUpdateFile)) {
-      settings.hooks.SessionStart.push({
-        hooks: [
-          {
-            type: 'command',
-            command: updateCheckCommand
-          }
-        ]
-      });
-      console.log(`  ${green}✓${reset} Configured update check hook`);
-    } else if (!hasGsdUpdateHook && !fs.existsSync(checkUpdateFile)) {
-      console.warn(`  ${yellow}⚠${reset}  Skipped update check hook — gsd-check-update.js not found at target`);
     }
 
     // Configure post-tool hook for context window monitoring

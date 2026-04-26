@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 
 const INSTALL_JS = path.join(__dirname, '..', 'bin', 'install.js');
+const BUILD_HOOKS = path.join(__dirname, '..', 'scripts', 'build-hooks.js');
 
 describe('workflow-guard hook registration (#1767)', () => {
   test('install.js constructs a command path variable for gsd-workflow-guard.js', () => {
@@ -63,11 +64,11 @@ describe('workflow-guard hook registration (#1767)', () => {
 });
 
 describe('hook registration completeness anti-pattern guard', () => {
-  test('every JS hook in gsdHooks has a command construction in install.js', () => {
+  test('every shipped JS hook has a command construction in install.js', () => {
     const content = fs.readFileSync(INSTALL_JS, 'utf-8');
-    // Extract gsdHooks array entries
-    const hooksMatch = content.match(/gsdHooks\s*=\s*\[([^\]]+)\]/);
-    assert.ok(hooksMatch, 'gsdHooks array must exist in install.js');
+    const buildHooks = fs.readFileSync(BUILD_HOOKS, 'utf-8');
+    const hooksMatch = buildHooks.match(/HOOKS_TO_COPY\s*=\s*\[([\s\S]*?)\]/);
+    assert.ok(hooksMatch, 'HOOKS_TO_COPY array must exist in build-hooks.js');
 
     const hookNames = hooksMatch[1]
       .match(/'([^']+)'/g)
@@ -92,7 +93,7 @@ describe('hook registration completeness anti-pattern guard', () => {
     assert.strictEqual(
       missing.length, 0,
       [
-        'Every JS hook in gsdHooks must have a command construction in install.js.',
+        'Every shipped JS hook must have a command construction in install.js.',
         'Missing registration for:',
         ...missing.map(h => `  - ${h}`),
       ].join('\n')

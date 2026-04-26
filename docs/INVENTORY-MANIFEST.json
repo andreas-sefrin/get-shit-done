@@ -294,8 +294,6 @@
       "workstream.cjs"
     ],
     "hooks": [
-      "gsd-check-update-worker.js",
-      "gsd-check-update.js",
       "gsd-context-monitor.js",
       "gsd-phase-boundary.sh",
       "gsd-prompt-guard.js",

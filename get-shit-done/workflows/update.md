@@ -529,19 +529,6 @@ if [ -n "$CODEX_HOME" ]; then
   CACHE_DIRS+=( "$(expand_home "$CODEX_HOME")" )
 fi
 
-for dir in "${CACHE_DIRS[@]}"; do
-  if [ -n "$dir" ]; then
-    rm -f "$dir/cache/gsd-update-check.json"
-  fi
-done
-
-for dir in .claude .config/opencode .opencode .gemini .config/kilo .kilo .codex; do
-  rm -f "./$dir/cache/gsd-update-check.json"
-  rm -f "$HOME/$dir/cache/gsd-update-check.json"
-done
-```
-
-All cache paths must be cleared to prevent stale update indicators.
 </step>
 
 <step name="display_result">

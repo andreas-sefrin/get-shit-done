@@ -1182,76 +1182,22 @@ describe('normalizeMd', () => {
   });
 });
 
-// ─── Stale hook filter regression (#1200) ─────────────────────────────────────
-
-describe('stale hook filter', () => {
-  test('filter should only match gsd-prefixed .js files', () => {
-    const files = [
-      'gsd-context-monitor.js',
-      'gsd-prompt-guard.js',
-      'gsd-statusline.js',
-      'gsd-workflow-guard.js',
-      'guard-edits-outside-project.js',  // user hook
-      'my-custom-hook.js',               // user hook
-      'gsd-context-monitor.js.bak',      // backup file
-      'README.md',                       // non-js file
-    ];
-
-    const gsdFilter = f => f.startsWith('gsd-') && f.endsWith('.js');
-    const filtered = files.filter(gsdFilter);
-
-    assert.deepStrictEqual(filtered, [
-      'gsd-context-monitor.js',
-      'gsd-prompt-guard.js',
-      'gsd-statusline.js',
-      'gsd-workflow-guard.js',
-    ], 'should only include gsd-prefixed .js files');
-
-    assert.ok(!filtered.includes('guard-edits-outside-project.js'), 'must not include user hooks');
-    assert.ok(!filtered.includes('my-custom-hook.js'), 'must not include non-gsd hooks');
-  });
-});
-
-// ─── stale hook path regression (#1249) ──────────────────────────────────────
-
-describe('stale hook path', () => {
-  test('gsd-check-update.js checks configDir/hooks/ where hooks are actually installed (#1421)', () => {
-    // The stale-hook scan logic lives in the worker (moved from inline -e template literal).
-    // The worker receives configDir via env and constructs the hooksDir path.
-    const content = fs.readFileSync(
-      path.join(__dirname, '..', 'hooks', 'gsd-check-update-worker.js'), 'utf-8'
-    );
-    // Hooks are installed at configDir/hooks/ (e.g. ~/.claude/hooks/),
-    // not configDir/get-shit-done/hooks/ which doesn't exist (#1421)
-    assert.ok(
-      content.includes("path.join(configDir, 'hooks')"),
-      'stale hook check must look in configDir/hooks/ where hooks are actually installed'
-    );
-  });
-});
-// ─── shared cache directory regression (#1421) ─────────────────────────────────
-
-describe('shared cache directory (#1421)', () => {
-  test('gsd-statusline.js checks shared cache first, falls back to legacy (#1421)', () => {
+describe('statusline update-check removal', () => {
+  test('gsd-statusline.js no longer renders update-check cache state', () => {
     const content = fs.readFileSync(
       path.join(__dirname, '..', 'hooks', 'gsd-statusline.js'), 'utf-8'
     );
-    // Statusline must check the shared cache path first
     assert.ok(
-      content.includes("path.join(homeDir, '.cache', 'gsd', 'gsd-update-check.json')"),
-      'statusline must check shared cache at ~/.cache/gsd/gsd-update-check.json'
+      !content.includes('gsd-update-check.json'),
+      'statusline should not read the removed update-check cache'
     );
-    // Must fall back to legacy runtime-specific cache for backward compat
     assert.ok(
-      content.includes("path.join(claudeDir, 'cache', 'gsd-update-check.json')"),
-      'statusline must fall back to legacy cache at claudeDir/cache/gsd-update-check.json'
+      !content.includes('stale hooks — run /gsd-update'),
+      'statusline should not render stale-hook messaging after update-check removal'
     );
-    // Shared cache must be checked before legacy (existsSync order matters)
-    const sharedIdx = content.indexOf('sharedCacheFile');
-    const legacyIdx = content.indexOf('legacyCacheFile');
     assert.ok(
-      sharedIdx < legacyIdx,
-      'shared cache must be defined and checked before legacy cache'
+      !content.includes('⬆ /gsd-update'),
+      'statusline should not render update-available messaging after update-check removal'
     );
   });
 });

@@ -103,8 +103,8 @@ describe('#2698: CRLF stale gsd-update-check block is removed on Codex reinstall
       'Stale gsd-update-check entry must be removed from LF config.toml (#2698)'
     );
     assert.ok(
-      content.includes('gsd-check-update'),
-      'New gsd-check-update hook must appear after reinstall'
+      !content.includes('gsd-check-update'),
+      'Reinstall should not add the removed gsd-check-update hook'
     );
   });
 
@@ -124,8 +124,8 @@ describe('#2698: CRLF stale gsd-update-check block is removed on Codex reinstall
       'Stale gsd-update-check entry must be removed from CRLF config.toml (#2698)'
     );
     assert.ok(
-      content.includes('gsd-check-update'),
-      'New gsd-check-update hook must appear after reinstall'
+      !content.includes('gsd-check-update'),
+      'Reinstall should not add the removed gsd-check-update hook'
     );
   });
 
